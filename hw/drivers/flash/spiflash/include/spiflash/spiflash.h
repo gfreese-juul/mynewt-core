@@ -25,6 +25,9 @@
 #endif
 #include <hal/hal_flash_int.h>
 #include <hal/hal_spi.h>
+#if MYNEWT_VAL(BUS_DRIVER_PRESENT)
+#include <bus/spi.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -32,10 +35,14 @@ extern "C" {
 
 struct spiflash_dev {
     struct hal_flash hal;
+#if MYNEWT_VAL(BUS_DRIVER_PRESENT)
+    struct bus_spi_node dev;
+#else
     struct hal_spi_settings spi_settings;
     int spi_num;
     void *spi_cfg;                  /** Low-level MCU SPI config */
     int ss_pin;
+#endif
     uint16_t sector_size;
     uint16_t page_size;
     /* Array of supported flash chips */

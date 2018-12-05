@@ -25,6 +25,10 @@
 #include <hal/hal_flash.h>
 #include <hal/hal_flash_int.h>
 #include <spiflash/spiflash.h>
+#if MYNEWT_VAL(BUS_DRIVER_PRESENT)
+#include <bus/bus.h>
+#include <bus/spi.h>
+#endif
 
 #if MYNEWT_VAL(SPIFLASH)
 
@@ -581,6 +585,9 @@ static const struct hal_flash_funcs spiflash_flash_funcs = {
     .hff_init         = spiflash_init,
 };
 
+#if MYNEWT_VAL(BUS_DRIVER_PRESENT)
+#endif
+
 struct spiflash_dev spiflash_dev = {
     /* struct hal_flash for compatibility */
     .hal = {
@@ -593,6 +600,7 @@ struct spiflash_dev spiflash_dev = {
         .hf_erased_val = 0xff,
     },
 
+#if !MYNEWT_VAL(BUS_DRIVER_PRESENT)
     /* SPI settings */
     .spi_settings = {
         .data_order = HAL_SPI_MSB_FIRST,
@@ -600,12 +608,12 @@ struct spiflash_dev spiflash_dev = {
         .baudrate   = MYNEWT_VAL(SPIFLASH_BAUDRATE),
         .word_size  = HAL_SPI_WORD_SIZE_8BIT,
     },
-
-    .sector_size        = MYNEWT_VAL(SPIFLASH_SECTOR_SIZE),
-    .page_size          = MYNEWT_VAL(SPIFLASH_PAGE_SIZE),
     .spi_num            = MYNEWT_VAL(SPIFLASH_SPI_NUM),
     .spi_cfg            = NULL,
     .ss_pin             = MYNEWT_VAL(SPIFLASH_SPI_CS_PIN),
+#endif
+    .sector_size        = MYNEWT_VAL(SPIFLASH_SECTOR_SIZE),
+    .page_size          = MYNEWT_VAL(SPIFLASH_PAGE_SIZE),
 
     .supported_chips = supported_chips,
     .flash_chip = NULL,
@@ -628,13 +636,23 @@ static inline void spiflash_unlock(struct spiflash_dev *dev)
 static inline void
 spiflash_cs_activate(struct spiflash_dev *dev)
 {
+#if MYNEWT_VAL(BUS_DRIVER_PRESENT)
+    struct bus_spi_node *node = (struct bus_spi_node *)&dev->dev;
+    hal_gpio_write(node->pin_cs, 0);
+#else
     hal_gpio_write(dev->ss_pin, 0);
+#endif
 }
 
 static inline void
 spiflash_cs_deactivate(struct spiflash_dev *dev)
 {
+#if MYNEWT_VAL(BUS_DRIVER_PRESENT)
+    struct bus_spi_node *node = &dev->dev;
+    hal_gpio_write(node->pin_cs, 1);
+#else
     hal_gpio_write(dev->ss_pin, 1);
+#endif
 }
 
 void
@@ -644,11 +662,15 @@ spiflash_power_down(struct spiflash_dev *dev)
 
     spiflash_lock(dev);
 
+#if MYNEWT_VAL(BUS_DRIVER_PRESENT)
+    bus_node_simple_write(&dev->dev.bnode.odev, cmd, sizeof(cmd));
+#else
     spiflash_cs_activate(dev);
 
     hal_spi_txrx(dev->spi_num, cmd, cmd, sizeof cmd);
 
     spiflash_cs_deactivate(dev);
+#endif
 
     spiflash_unlock(dev);
 }
@@ -678,11 +700,15 @@ spiflash_release_power_down(struct spiflash_dev *dev)
 
     spiflash_lock(dev);
 
+#if MYNEWT_VAL(BUS_DRIVER_PRESENT)
+    bus_node_simple_write(&dev->dev.bnode.odev, cmd, sizeof(cmd));
+#else
     spiflash_cs_activate(dev);
 
     hal_spi_txrx(dev->spi_num, cmd, cmd, sizeof cmd);
 
     spiflash_cs_deactivate(dev);
+#endif
 
     spiflash_unlock(dev);
 }
@@ -695,11 +721,16 @@ spiflash_read_jedec_id(struct spiflash_dev *dev,
 
     spiflash_lock(dev);
 
+#if MYNEWT_VAL(BUS_DRIVER_PRESENT)
+    bus_node_simple_write_read_transact(&dev->dev.bnode.odev,
+        cmd, 1, cmd + 1, 3);
+#else
     spiflash_cs_activate(dev);
 
     hal_spi_txrx(dev->spi_num, cmd, cmd, sizeof cmd);
 
     spiflash_cs_deactivate(dev);
+#endif
 
     if (manufacturer) {
         *manufacturer = cmd[1];
@@ -722,15 +753,21 @@ uint8_t
 spiflash_read_status(struct spiflash_dev *dev)
 {
     uint8_t val;
+    const uint8_t cmd = SPIFLASH_READ_STATUS_REGISTER;
 
     spiflash_lock(dev);
 
+#if MYNEWT_VAL(BUS_DRIVER_PRESENT)
+    bus_node_simple_write_read_transact(&dev->dev.bnode.odev,
+        &cmd, 1, &val, 1);
+#else
     spiflash_cs_activate(dev);
 
-    hal_spi_tx_val(dev->spi_num, SPIFLASH_READ_STATUS_REGISTER);
+    hal_spi_tx_val(dev->spi_num, cmd);
     val = hal_spi_tx_val(dev->spi_num, 0xFF);
 
     spiflash_cs_deactivate(dev);
+#endif
 
     spiflash_unlock(dev);
 
@@ -770,13 +807,18 @@ err:
 int
 spiflash_write_enable(struct spiflash_dev *dev)
 {
+    uint8_t cmd = SPIFLASH_WRITE_ENABLE;
     spiflash_lock(dev);
 
+#if MYNEWT_VAL(BUS_DRIVER_PRESENT)
+    bus_node_simple_write(&dev->dev.bnode.odev, &cmd, 1);
+#else
     spiflash_cs_activate(dev);
 
-    hal_spi_tx_val(dev->spi_num, SPIFLASH_WRITE_ENABLE);
+    hal_spi_tx_val(dev->spi_num, cmd);
 
     spiflash_cs_deactivate(dev);
+#endif
 
     spiflash_unlock(dev);
 
@@ -800,6 +842,10 @@ spiflash_read(const struct hal_flash *hal_flash_dev, uint32_t addr, void *buf,
     if (!err) {
         spiflash_cs_activate(dev);
 
+#if MYNEWT_VAL(BUS_DRIVER_PRESENT)
+        bus_node_simple_write_read_transact(&dev->dev.bnode.odev,
+            &cmd, 4, buf, len);
+#else
         /* Send command + address */
         hal_spi_txrx(dev->spi_num, cmd, NULL, sizeof cmd);
         /* For security mostly, do not output random data, fill it with FF */
@@ -808,6 +854,7 @@ spiflash_read(const struct hal_flash *hal_flash_dev, uint32_t addr, void *buf,
         hal_spi_txrx(dev->spi_num, buf, buf, len);
 
         spiflash_cs_deactivate(dev);
+#endif
     }
 
     spiflash_unlock(dev);
@@ -845,11 +892,18 @@ spiflash_write(const struct hal_flash *hal_flash_dev, uint32_t addr,
         page_limit = (addr & ~(dev->page_size - 1)) + dev->page_size;
         to_write = page_limit - addr > len ? len :  page_limit - addr;
 
+#if MYNEWT_VAL(BUS_DRIVER_PRESENT)
+        bus_node_lock(&dev->dev.bnode.odev, BUS_NODE_LOCK_DEFAULT_TIMEOUT);
+        bus_node_write(&dev->dev.bnode.odev,
+            cmd, 4, BUS_NODE_LOCK_DEFAULT_TIMEOUT, BUS_F_NOSTOP);
+        bus_node_simple_write(&dev->dev.bnode.odev, u8buf, to_write);
+        bus_node_unlock(&dev->dev.bnode.odev);
+#else
         spiflash_cs_activate(dev);
         hal_spi_txrx(dev->spi_num, cmd, NULL, sizeof cmd);
         hal_spi_txrx(dev->spi_num, (void *)u8buf, NULL, to_write);
         spiflash_cs_deactivate(dev);
-
+#endif
         addr += to_write;
         u8buf += to_write;
         len -= to_write;
@@ -884,11 +938,15 @@ spiflash_erase_sector(const struct hal_flash *hal_flash_dev,
 
     spiflash_read_status(dev);
 
+#if MYNEWT_VAL(BUS_DRIVER_PRESENT)
+    bus_node_simple_write(&dev->dev.bnode.odev, cmd, sizeof(cmd));
+#else
     spiflash_cs_activate(dev);
 
     hal_spi_txrx(dev->spi_num, cmd, NULL, sizeof cmd);
 
     spiflash_cs_deactivate(dev);
+#endif
 
     spiflash_wait_ready(dev, 100);
 err:
@@ -1009,6 +1067,7 @@ spiflash_init(const struct hal_flash *hal_flash_dev)
     os_mutex_init(&dev->lock);
 #endif
 
+#if !MYNEWT_VAL(BUS_DRIVER_PRESENT)
     hal_gpio_init_out(dev->ss_pin, 1);
 
     (void)hal_spi_disable(dev->spi_num);
@@ -1020,7 +1079,7 @@ spiflash_init(const struct hal_flash *hal_flash_dev)
 
     hal_spi_set_txrx_cb(dev->spi_num, NULL, NULL);
     hal_spi_enable(dev->spi_num);
-
+#endif
     rc = spiflash_identify(dev);
 
     return rc;
