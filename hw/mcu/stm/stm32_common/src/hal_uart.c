@@ -401,6 +401,24 @@ hal_uart_config(int port, int32_t baudrate, uint8_t databits, uint8_t stopbits,
         return -1;
     }
 
+    //enable synchronous UART mode when a clock pin is specified
+    if(cfg->suc_pin_clk != 0)
+    {
+        cr2 |= USART_CR2_CLKEN;
+    }
+
+    //clock phase for synchronous serial mode
+    if(cfg->suc_clk_CPHA)
+    {
+        cr2 |= USART_CR2_CPHA;
+    }
+
+    //clock polarity for synchronous serial mode
+    if(cfg->suc_clk_CPOL)
+    {
+        cr2 |= USART_CR2_CPOL;
+    }
+
     switch (stopbits) {
     case 1:
         cr2 |= UART_STOPBITS_1;

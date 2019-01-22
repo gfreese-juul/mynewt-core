@@ -22,6 +22,7 @@
 
 #include <hal/hal_gpio.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -31,15 +32,18 @@ extern "C" {
  * BSP specific UART settings.
  */
 struct stm32_uart_cfg {
-    USART_TypeDef *suc_uart;			/* UART dev registers */
-    volatile uint32_t *suc_rcc_reg;		/* RCC register to modify */
-    uint32_t suc_rcc_dev;			/* RCC device ID */
-    int8_t suc_pin_tx;				/* pins for IO */
-    int8_t suc_pin_rx;
-    int8_t suc_pin_rts;
-    int8_t suc_pin_cts;
-    uint8_t suc_pin_af;				/* AF selection for this */
-    IRQn_Type suc_irqn;				/* NVIC IRQn */
+    USART_TypeDef *suc_uart;		// UART dev registers
+    volatile uint32_t *suc_rcc_reg;	// RCC register to modify
+    uint32_t suc_rcc_dev;			// RCC device ID
+    int8_t suc_pin_tx;				// physical pin assignment
+    int8_t suc_pin_rx;				// physical pin assignment
+	int8_t suc_pin_clk;				// physical pin assignment
+    int8_t suc_pin_rts;				// physical pin assignment
+    int8_t suc_pin_cts;				// physical pin assignment
+    uint8_t suc_pin_af;				// alternate function register value (eg, GPIO_AF8_USART6)
+	bool suc_clk_CPOL;				// clock polarity (CPOL=0 -> Data valid on falling edge, CPOL=1 -> Data valid on rising edge)
+	bool suc_clk_CPHA;				// clock phase
+    IRQn_Type suc_irqn;				// NVIC IRQ number
 };
 
 /*
